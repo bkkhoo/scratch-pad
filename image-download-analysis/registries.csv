@@ -1,0 +1,22 @@
+Registry Name,Average Blobs Count,Total Downloads,Total Blob Requests
+docker-cto-dev-local,34.89,27,942
+docker-cto-int-local,27.50,10,275
+docker-cto-test-local,25.00,1,25
+docker-icg-prod-local,24.76,118,"2,922"
+docker-icg-dev,24.25,20,485
+docker-gcg-prod-local,23.31,55,"1,282"
+docker-cto-prod-local,22.63,75,"1,697"
+docker-gcg-dev-local,22.50,8,180
+docker-icg-int-local,22.50,2,45
+docker-enterprise-dev-local,22.40,5,112
+docker-icg-test-local,21.67,3,65
+docker-icg-dev-local,21.49,192,"4,126"
+docker-cto-dev,16.67,3,50
+docker-3rdparty-int-local,16.13,15,242
+docker-enterprise-prod,15.83,6,95
+docker-cto-prod,15.20,5,76
+docker-3rdparty-prod-local,15.00,8,120
+docker-icg-prod,13.50,2,27
+docker-3rdparty-int,13.25,4,53
+docker-enterprise-int-local,11.86,7,83
+docker-cto-int,10.00,1,10
