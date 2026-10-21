@@ -1,12 +1,12 @@
-#,Image Name,Max Single-Session Blobs,Total Unique Layers
-1,/api/docker/docker-icg-dev-local/v2/icg-isg-stellar-179264/stellar-xinference,79,72
-2,/api/docker/docker-cto-int-local/v2/cate-enterprise-build-163333/ebcontainerbuild-rh8,77,68
-3,/api/docker/docker-gcg-prod-local/v2/gcb-dna-snowflake-176012/spark-base,77,77
-4,/api/docker/docker-cto-dev-local/v2/cti-devspaces-177398/devspaces-citi-tide-stack-0-0-7,73,73
-5,/api/docker/docker-cto-dev-local/v2/cti-devspaces-177398/devspaces-citi-python-3-14-0,66,66
-6,/api/docker/docker-icg-dev-local/v2/icg-isg-omc-aof-167433/omc-aof-build-agent-mvn-npm-lib-cache,57,55
-7,/api/docker/docker-cto-dev-local/v2/cto-svcs-dbaas-support-preprod-167893/opsmanager-pipeline-preprod-docker,55,55
-8,/api/docker/docker-cto-prod-local/v2/cto-gft-cstx-170507/gi-web,52,52
-9,/api/docker/docker-icg-prod-local/v2/icg-msst-gpdw-160760/gpdw-observability-metrics,52,52
-10,/api/docker/docker-icg-prod-local/v2/icg-tts-trade-idp-168439/idp-api-automation,52,52
-11,/api/docker/docker-gcg-prod-local/v2/gcb-dna-snowflake-176012/citi-aws-cli,51,51
+Image Name,Max Single-Session Blobs,Total Unique Layers
+/api/docker/docker-icg-dev-local/v2/icg-isg-stellar-179264/stellar-xinference,79,72
+/api/docker/docker-cto-int-local/v2/cate-enterprise-build-163333/ebcontainerbuild-rh8,77,68
+/api/docker/docker-gcg-prod-local/v2/gcb-dna-snowflake-176012/spark-base,77,77
+/api/docker/docker-cto-dev-local/v2/cti-devspaces-177398/devspaces-citi-tide-stack-0-0-7,73,73
+/api/docker/docker-cto-dev-local/v2/cti-devspaces-177398/devspaces-citi-python-3-14-0,66,66
+/api/docker/docker-icg-dev-local/v2/icg-isg-omc-aof-167433/omc-aof-build-agent-mvn-npm-lib-cache,57,55
+/api/docker/docker-cto-dev-local/v2/cto-svcs-dbaas-support-preprod-167893/opsmanager-pipeline-preprod-docker,55,55
+/api/docker/docker-cto-prod-local/v2/cto-gft-cstx-170507/gi-web,52,52
+/api/docker/docker-icg-prod-local/v2/icg-msst-gpdw-160760/gpdw-observability-metrics,52,52
+/api/docker/docker-icg-prod-local/v2/icg-tts-trade-idp-168439/idp-api-automation,52,52
+/api/docker/docker-gcg-prod-local/v2/gcb-dna-snowflake-176012/citi-aws-cli,51,51
