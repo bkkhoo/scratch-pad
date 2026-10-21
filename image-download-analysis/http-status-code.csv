@@ -1,0 +1,6 @@
+Status Code,Description,Request Count,Percentage
+200,OK (successful full response / token requests),1576,11.69%
+206,Partial Content (chunked blob/layer downloads),11579,85.90%
+302,Found (redirected request),102,0.76%
+304,Not Modified (cached layer revalidation),215,1.59%
+404,Not Found (missing layer/blob),8,0.06%
