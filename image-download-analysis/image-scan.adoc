@@ -26,7 +26,9 @@ Analysis of link:raw-data.csv[raw data]:
 - link:requests-per-day.csv[Number of requests per day]:
   ** 2026-10-08 - 147 requests (7 image downloads)
   ** 2026-10-09 - 12731 requests (557 image downloads)
+  ** 2026-10-10 - 0 requests (no data)
   ** 2026-10-11 - 16 requests (2 image downloads)
+  ** 2026-10-12 - 0 requests (no data)
   ** 2026-10-13 - 18 requests (1 image downloads)
 - Total requests: 13480
   ** Total token requests: 568
