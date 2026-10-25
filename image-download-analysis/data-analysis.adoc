@@ -1,0 +1,50 @@
+:icons: font
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+= Data Analysis
+
+Analysis of link:raw-data.csv[raw data]:
+
+- link:requests-per-day.csv[Number of requests per day]:
+  ** 2026-10-08 - 147 requests (7 image downloads)
+  ** 2026-10-09 - 12731 requests (557 image downloads)
+  ** 2026-10-10 - 0 requests (no data)
+  ** 2026-10-11 - 16 requests (2 image downloads)
+  ** 2026-10-12 - 0 requests (no data)
+  ** 2026-10-13 - 18 requests (1 image downloads)
+- Total requests: 13480
+  ** Total token requests: 568
+  ** Total blob requests: 12912
+- link:all_image_downloads.csv[Total image downloads]: 567
+  ** Unique image download: 462
+  ** Images that were downloaded only once: 403
+  ** link:image-download-more-than-once.csv[Images that were downloaded multiple times]: 59
+- Average blob requests per image: 23 (22.77)
+- Median blob requests per image: 21
+- Minimum blob requests: 4
+  ** /api/docker/docker-3rdparty-prod-local/v2/crowdstrike-173996/falcon-sensor/release/falcon-sensor
+  ** /api/docker/docker-cto-prod-local/v2/cti-svcs-appd-mcagent-149931/machineagent-rhel8
+  ** /api/docker/docker-icg-prod-local/v2/icg-tts-aiste-158629/rhel9-oc
+- Maximum blob requests: 79
+  ** /api/docker/docker-icg-dev-local/v2/icg-isg-stellar-179264/stellar-xinference
+- link:image-with-more-than-50-blobs.csv[Images with more than 50 blobs]
+- Image with the longest name:
+  ** /api/docker/docker-enterprise-int-local/v2/cate-citidata-abinitio/abinitio-base-image/abinitio-authorizationgateway-tomcat-jre/rhel8/abinitio-authorizationgateway-tomcat-jre-java21o-4-3-3
+- link:requester-ip.csv[Requestor IP addresses]: 8
+- link:http-status-code.csv[HTTP status codes]:
+  ** 200 OK - 1576
+  ** 206 Partial Content - 11579
+  ** 302 Found - 102
+  ** 304 Not Modified - 215
+  ** 404 Not Found - 8
+- link:registries.csv[Image registries]
+
+[NOTE]
+====
+To determine if blob requests belong to an image download, the analysis assumes that all blob requests to the same API endpoint within a 2-minute interval belong to the same image download.
+====

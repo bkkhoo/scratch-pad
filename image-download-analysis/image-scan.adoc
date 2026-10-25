@@ -10,54 +10,167 @@ endif::[]
 
 RHACS Scanner is the integrated vulnerability scanning capabilities that analyze container images and cluster workloads for security risks. It primarily comprises two engines:
 
-- Scanner V4: Introduced in RHACS v4.4, this engine uses ClairCore to provide accurate detection of OS packages, language dependencies (like Go, Python, Java), and Go binaries.
-- StackRox Scanner: The legacy default scanner, originally a fork of Clair v2, which remains essential for RHCOS node scanning and platform vulnerabilities (e.g., OpenShift, Kubernetes) where Scanner V4 support is still being expanded.
+- **Scanner V4**: Introduced in RHACS v4.4, this engine uses ClairCore to provide accurate detection of OS packages, language dependencies (like Go, Python, Java), and Go binaries.
+- **StackRox Scanner**: The legacy default scanner, originally a fork of Clair v2, which remains essential for RHCOS node scanning and platform vulnerabilities (e.g., OpenShift, Kubernetes) where Scanner V4 support is still being expanded.
 
 The scanners pull images from registries, analyze layers to identify installed packages, and match them against known Common Vulnerabilities and Exposures (CVE) databases to generate risk-prioritized reports in the RHACS portal.
 
-== How RHACS Scans Images
+== RHACS Image Scanning (Scanner V4)
+=== New Image
 
-in progress
+. Sensor detects the deployment, and Central requests the Scanner Indexer to download and index the image.
+. The Indexer pulls image metadata from the registry, determines the layers, and downloads each previously un-indexed layer.
+. The Indexer produces an `IndexReport` (list of packages, OS, language dependencies) and stores it in the `scanner-v4-db`.
+. Central then requests the Matcher to match the image to known vulnerabilities.
+. The Matcher fetches the latest vulnerability data from Central, retrieves the `IndexReport`, and produces the final vulnerability report.
 
-== Data Analysis
+=== Existing (already-indexed) Image
 
-Analysis of link:raw-data.csv[raw data]:
+. Sensor detects the deployment and Central calls the Scanner Indexer.
+. The Indexer fetches the image manifest from the registry to read its layer SHA digests. It checks `scanner-v4-db` and finds that index data already exists for these layer digests.
+. The Indexer bypasses downloading and re-analyzing the layer blobs from the registry, saving network bandwidth and CPU resources.
+. The scanner reuses the existing `IndexReport` from `scanner-v4-db`, matches it against the current CVE feeds, and delivers the report to Central DB.
 
-- link:requests-per-day.csv[Number of requests per day]:
-  ** 2026-10-08 - 147 requests (7 image downloads)
-  ** 2026-10-09 - 12731 requests (557 image downloads)
-  ** 2026-10-10 - 0 requests (no data)
-  ** 2026-10-11 - 16 requests (2 image downloads)
-  ** 2026-10-12 - 0 requests (no data)
-  ** 2026-10-13 - 18 requests (1 image downloads)
-- Total requests: 13480
-  ** Total token requests: 568
-  ** Total blob requests: 12912
-- link:all_image_downloads.csv[Total image downloads]: 567
-  ** Unique image download: 462
-  ** Images that were downloaded only once: 403
-  ** link:image-download-more-than-once.csv[Images that were downloaded multiple times]: 59
-- Average blob requests per image: 23 (22.77)
-- Median blob requests per image: 21
-- Minimum blob requests: 4
-  ** /api/docker/docker-3rdparty-prod-local/v2/crowdstrike-173996/falcon-sensor/release/falcon-sensor
-  ** /api/docker/docker-cto-prod-local/v2/cti-svcs-appd-mcagent-149931/machineagent-rhel8
-  ** /api/docker/docker-icg-prod-local/v2/icg-tts-aiste-158629/rhel9-oc
-- Maximum blob requests: 79
-  ** /api/docker/docker-icg-dev-local/v2/icg-isg-stellar-179264/stellar-xinference
-- link:image-with-more-than-50-blobs.csv[Images with more than 50 blobs]
-- Image with the longest name:
-  ** /api/docker/docker-enterprise-int-local/v2/cate-citidata-abinitio/abinitio-base-image/abinitio-authorizationgateway-tomcat-jre/rhel8/abinitio-authorizationgateway-tomcat-jre-java21o-4-3-3
-- link:requester-ip.csv[Requestor IP addresses]: 8
-- link:http-status-code.csv[HTTP status codes]:
-  ** 200 OK - 1576
-  ** 206 Partial Content - 11579
-  ** 302 Found - 102
-  ** 304 Not Modified - 215
-  ** 404 Not Found - 8
-- link:registries.csv[Image registries]
+=== Periodic Image Reprocessing
+
+- Every 4 hours (configurable with `ROX_REPROCESSING_INTERVAL` environment variable), Central runs an automated image reprocessing loop for all active (deployed) images.
+- The Matcher evaluates the existing `IndexReport` against vulnerability definitions that Central updates every 5 minutes (configurable with `ROX_SCANNER_VULN_UPDATE_INTERVAL` environment variable).
+- If new CVEs are published that affect packages in the stored index, Central DB is updated and policy violations are created or resolved automatically.
 
 [NOTE]
 ====
-To determine if blob requests belong to an image download, the analysis assumes that all blob requests to the same API endpoint within a 2-minute interval belong to the same image download.
+- The `ROX_SCANNER_VULN_UPDATE_INTERVAL` environment variable applies to the connection between Central and the `definitions.stackrox.io` feed. Both the StackRox Scanner and Scanner V4 use vulnerability data from Central that is obtained from this feed.
+- This `definitions.stackrox.io` feed combines vulnerability definitions from upstream sources, and it refreshes every 3 hours.
 ====
+
+== Pruning and Garbage Collection
+=== Workload Removal and Central Database Retention Pruning
+
+- RHACS does not automatically remove scan data from active (deployed) images; it periodically re-scans them every 4 hours to update vulnerability definitions.
+- When the workload deployment is removed from the cluster, RHACS marks the image as inactive.
+- Inactive images are immediately removed from the periodic reprocessing loop to conserve cluster resources.
+- Scan data for the inactive image remains in Central DB for 7 days (configuration in **Platform Configuration → System Configuration → Images no longer deployed**).
+- Once the retention period expires, Central's background pruner permanently deletes the image's scan data from Central DB.
+
+[NOTE]
+====
+Setting the data retention period to **0** disables pruning and retains inactive image data indefinitely.
+====
+
+=== Scanner V4 Layer Index Garbage Collection
+
+Independent of Central, Scanner V4 uses two distinct background garbage collection (GC) processes to manage storage and maintain performance:
+
+- **Throttled GC**: every 4 hours, purges up to 100 expired manifests (7-30 days after indexing) from `scanner-v4-db`.
+- **Full GC**: every 24 hours, performs a comprehensive cleanup of all expired manifests to reclaim significant space.
+
+[NOTE]
+====
+- Purging a manifest from `scanner-v4-db` does **not** delete the active image scan data or vulnerability history from Central DB.
+- If Central or a `roxctl` scan explicitly requests a fresh index for an active image after its layer index was purged, Scanner V4 transparently fetches the manifest and layer blobs from the registry to rebuild the `IndexReports` in `scanner-v4-db`.
+====
+
+The following environment variables control Scanner V4 garbage collection (see https://github.com/stackrox/stackrox/blob/master/pkg/env/scannerv4.go):
+
+[cols="3,1,3", options="header"]
+|===
+| Environment Variable
+| Default
+| Description
+
+| ROX_SCANNER_V4_MANIFEST_DELETE_INTERVAL_START
+| 7 days
+| Minimum age before a manifest becomes eligible for deletion in throttled GC run.
+
+| ROX_SCANNER_V4_MANIFEST_DELETE_DURATION
+| 23 days
+| Manifest aged between `ROX_SCANNER_V4_MANIFEST_DELETE_INTERVAL_START` and (`ROX_SCANNER_V4_MANIFEST_DELETE_INTERVAL_START` + `ROX_SCANNER_V4_MANIFEST_DELETE_DURATION`) days are considered for random deletion during throttled GC runs.
+
+| ROX_SCANNER_V4_MANIFEST_GC_INTERVAL
+| 4 hours
+| The interval between throttled GC runs.
+
+| ROX_SCANNER_V4_MANIFEST_GC_THROTTLE
+| 100
+| The number of manifests to garbage collect during a typical throttled GC run.
+
+| ROX_SCANNER_V4_FULL_MANIFEST_GC_INTERVAL
+| 24 hours
+| The interval between full GC runs.
+|===
+
+== Central DB vs Scanner V4 DB
+
+Here is a side-by-side comparison of the usage, role, and operational characteristics of **Central DB** (`central-db`) and **Scanner V4 DB** (`scanner-v4-db`):
+
+[cols="1,2,2", options="header"]
+|===
+| Feature
+| Central DB (`central-db`)
+| Scanner V4 DB (`scanner-v4-db`)
+
+| **Primary Role**
+| Main persistent datastore for the RHACS platform control plane.
+| Specialized datastore for image layer analysis and vulnerability matching.
+
+| **Data Stored**
+| System configurations, security policies, policy violations, cluster events, RBAC mappings, compliance results, and final vulnerability scan reports.
+| Raw vulnerability feeds/bundles (Red Hat VEX, OSV, NVD) and layer-by-layer package inventory reports (`IndexReports`).
+
+| **Deployment Location**
+| Installed exclusively on the cluster hosting Central Services.
+| Installed on the Central cluster (alongside Matcher and Indexer) and optionally on Secured Clusters for local/delegated scanning.
+
+| **Data Retention and Purging**
+| Configured via **Platform Configuration → System Configuration → Images no longer deployed**.
+| Managed automatically by Scanner V4 Indexer background garbage collection, configurable with environment variables.
+
+| **Impact of Storage Loss / Pod Restarts**
+| Critical. Loss causes loss of platform settings and historical violations unless restored from a backup.
+| Non-critical. Active scan reports in Central DB remain intact. Scanner V4 simply re-fetches layers from the registry to rebuild the `IndexReport` if needed.
+|===
+
+== Configure Environment Variables for RHACS Components
+
+The following example uses `.spec.overlays` field to apply JSONPath-based patches to Central and Scanner V4 Indexer:
+
+[source,yaml]
+----
+apiVersion: platform.stackrox.io/v1alpha1
+kind: Central
+metadata:
+  name: stackrox-central-services
+  namespace: stackrox
+spec:
+  central:
+    exposure:
+      route:
+        enabled: true
+  scannerV4:
+    scannerComponent: Enabled
+  overlays:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: central
+      patches:
+        - path: 'spec.template.spec.containers[name:central].env[-1]'
+          value: |
+            name: ROX_REPROCESSING_INTERVAL
+            value: "2"
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: scanner-v4-indexer
+      patches:  # change triggered gc interval to 2 hours, and delete manifests aged between 14-30 days
+        - path: 'spec.template.spec.containers[name:indexer].env[-1]'
+          value: |
+            name: ROX_SCANNER_V4_MANIFEST_DELETE_INTERVAL_START
+            value: "14d"
+        - path: 'spec.template.spec.containers[name:indexer].env[-1]'
+          value: |
+            name: ROX_SCANNER_V4_MANIFEST_DELETE_DURATION
+            value: "14d"
+        - path: 'spec.template.spec.containers[name:indexer].env[-1]'
+          value: |
+            name: ROX_SCANNER_V4_MANIFEST_GC_INTERVAL
+            value: "2h"
+----
