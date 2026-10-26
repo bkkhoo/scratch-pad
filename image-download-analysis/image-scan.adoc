@@ -11,12 +11,12 @@ endif::[]
 RHACS provides integrated vulnerability-scanning capabilities to analyze container images and cluster workloads for security risks. It primarily uses two scanning engines:
 
 - **Scanner V4**: Introduced in RHACS v4.4, this engine uses ClairCore to provide accurate detection of OS packages, language dependencies (like Go, Python, Java), and Go binaries. Scanner V4 is the default image scanner starting in RHACS v4.8.
-- **StackRox Scanner**: The legacy scanner, originally a fork of Clair v2. Although StackRox Scanner is deprecated, it must remain enabled on Central Services due to underlying platform software dependencies. This scanner can be safely disable on `SecuredCluster` if Scanner V4 is enabled on the cluster or if local image scanning on that specific `SecuredCluster` is not required.
+- **StackRox Scanner**: The legacy scanner, originally a fork of Clair v2. Although StackRox Scanner is deprecated, it must remain enabled on Central Services due to underlying platform software dependencies. This scanner can be safely disabled on `SecuredCluster` if Scanner V4 is enabled on the cluster or if local image scanning on that specific `SecuredCluster` is not required.
 
 The scanners pull images from registries, analyze layers to identify installed packages, and match them against known Common Vulnerabilities and Exposures (CVE) databases to generate risk-prioritized reports in the RHACS portal.
 
 == RHACS Image Scanning (Scanner V4)
-=== Scanning New Image
+=== Scanning a New Image
 
 . Sensor detects the deployment, and Central requests the Scanner Indexer to download and index the image.
 . The Indexer pulls image metadata from the registry, determines the layers, and downloads each previously un-indexed layer.
@@ -122,7 +122,7 @@ Extending the Scanner V4 garbage collection retention settings (e.g., increasing
   ** Storage expansion: Retaining `IndexReports` for longer periods increases the amount of historical data stored over time.
   ** PVC capacity risk: The accumulation of `IndexReports` can exhaust available PVC capacity. Running out of storage can lead to database errors or degraded scanning performance.
 * **Reduced network traffic and registry load through extended caching**:
-  ** Fewer Blob Downloads: Scanner V4 can avoid re-downloading and re-analyzing image layer blobs when the corresponding cached data remains available and valid.
+  ** Fewer blob downloads: Scanner V4 can avoid re-downloading and re-analyzing image layer blobs when the corresponding cached data remains available and valid.
   ** Bandwidth and CPU savings: Extended caching can reduce network traffic between the Scanner V4 Indexer and container image registries, as well as CPU and I/O overhead on scanner pods and registry endpoints.
 * No expected negative impact on new vulnerability (CVE) reporting.
 
