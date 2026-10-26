@@ -31,7 +31,7 @@ The scanners pull images from registries, analyze layers to identify installed p
 . The Indexer bypasses downloading and re-analyzing the layer blobs from the registry, saving network bandwidth and CPU resources.
 . The scanner reuses the existing `IndexReport` from `scanner-v4-db`, matches it against the current CVE feeds, and delivers the report to Central DB.
 
-=== Periodic Image Reprocessing
+=== Periodic Image Reprocessing Loop
 
 - Every 4 hours (configurable with `ROX_REPROCESSING_INTERVAL` environment variable), Central runs an automated image reprocessing loop for all active (deployed) images.
 - The Matcher evaluates the existing `IndexReport` against vulnerability definitions that Central updates every 5 minutes (configurable with `ROX_SCANNER_VULN_UPDATE_INTERVAL` environment variable).
@@ -52,9 +52,25 @@ The scanners pull images from registries, analyze layers to identify installed p
 * Scan data for the inactive image remains in Central DB for 7 days (configuration in **Platform Configuration → System Configuration → Images no longer deployed**).
 * Once the retention period expires, Central's background pruner permanently deletes the image's scan data from Central DB.
 
+Deleting or pruning inactive image scan data from **Central DB** (`central-db`) has several direct operational and historical consequences:
+
+* Storage and performance benefits:
+  ** Reduced storage space usage, lowering the risk of running out of space on the Central DB Persistent Volume Claim (PVC).
+  ** Reduced memory and CPU overhead on both the `central` and `central-db` pods, mitigating the risk of Out-of-Memory pod restarts.
+  ** Faster portal and API performance, as there is less data to load, resulting in improved response times.
+* Loss of historical audit and reporting data:
+  ** Permanent removal of past scan data (scan findings, package inventories, and vulnerability findings).
+  ** Inability to audit past image states or generate compliance and vulnerability reports for images whose scan data has been deleted.
+* No impact on active security or network bandwidth:
+  ** Running deployments continue to be monitored and enforced normally.
+  ** Inactive images are excluded from Central's 4-hour periodic vulnerability reprocessing loop anyway.
+* Automatic re-scanning upon redeployment:
+  ** RHACS automatically detects the image and performs a fresh scan against the latest vulnerability definitions.
+
 [NOTE]
 ====
-Setting the data retention period to **0** disables pruning and retains inactive image data indefinitely.
+* Setting the data retention period to **0** disables pruning and retains inactive image data indefinitely.
+* It is **not** recommended to disable pruning of inactive image data.
 ====
 
 === Scanner V4 Layer Index Garbage Collection
@@ -98,6 +114,16 @@ The following environment variables control Scanner V4 garbage collection (see h
 | 24 hours
 | The interval between full GC runs.
 |===
+
+Extending the Scanner V4 garbage collection retention settings (e.g., increasing the manifest retention period from 7-30 days to 14-60 days) has several consequences:
+
+* Increased disk space usage in `scanner-v4-db`:
+  ** Storage expansion: Retaining `IndexReports` for longer periods increases the amount of historical data stored over time.
+  ** PVC capacity risk: The accumulation of `IndexReports` can exhaust available PVC capacity. Running out of storage can lead to database errors or degraded scanning performance.
+* **Reduced network traffic and registry load through extended caching**:
+  ** Reduced Blob Downloads: Scanner V4 can avoid re-downloading and re-analyzing image layer blobs when the corresponding cached data remains available and valid.
+  ** Bandwidth and CPU savings: Extended caching can reduce network traffic between the Scanner V4 Indexer and container image registries, as well as CPU and I/O overhead on scanner pods and registry endpoints.
+* No expected negative impact on new vulnerability (CVE) reporting.
 
 == Central DB vs Scanner V4 DB
 
