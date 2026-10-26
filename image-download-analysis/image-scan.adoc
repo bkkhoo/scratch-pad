@@ -8,15 +8,15 @@ ifdef::env-github[]
 endif::[]
 = RHACS Scanner
 
-RHACS Scanner is the integrated vulnerability scanning capabilities that analyze container images and cluster workloads for security risks. It primarily comprises two engines:
+RHACS provides integrated vulnerability-scanning capabilities to analyze container images and cluster workloads for security risks. It primarily uses two scanning engines:
 
-- **Scanner V4**: Introduced in RHACS v4.4, this engine uses ClairCore to provide accurate detection of OS packages, language dependencies (like Go, Python, Java), and Go binaries.
-- **StackRox Scanner**: The legacy default scanner, originally a fork of Clair v2, which remains essential for RHCOS node scanning and platform vulnerabilities (e.g., OpenShift, Kubernetes) where Scanner V4 support is still being expanded.
+- **Scanner V4**: Introduced in RHACS v4.4, this engine uses ClairCore to provide accurate detection of OS packages, language dependencies (like Go, Python, Java), and Go binaries. Scanner V4 is the default image scanner starting in RHACS v4.8.
+- **StackRox Scanner**: The legacy default scanner, originally a fork of Clair v2. Although StackRox Scanner is deprecated, it must still remain enabled on Central Services due to underlying platform software dependencies. This scanner can be safely disable on `SecuredCluster` if Scanner V4 is enabled on the cluster or if local image scanning on that specific `SecuredCluster` is not required.
 
 The scanners pull images from registries, analyze layers to identify installed packages, and match them against known Common Vulnerabilities and Exposures (CVE) databases to generate risk-prioritized reports in the RHACS portal.
 
 == RHACS Image Scanning (Scanner V4)
-=== New Image
+=== Scanning New Image
 
 . Sensor detects the deployment, and Central requests the Scanner Indexer to download and index the image.
 . The Indexer pulls image metadata from the registry, determines the layers, and downloads each previously un-indexed layer.
@@ -24,23 +24,24 @@ The scanners pull images from registries, analyze layers to identify installed p
 . Central then requests the Matcher to match the image to known vulnerabilities.
 . The Matcher fetches the latest vulnerability data from Central, retrieves the `IndexReport`, and produces the final vulnerability report.
 
-=== Existing (already-indexed) Image
+=== Scanning an Already-indexed Image
 
 . Sensor detects the deployment and Central calls the Scanner Indexer.
 . The Indexer fetches the image manifest from the registry to read its layer SHA digests. It checks `scanner-v4-db` and finds that index data already exists for these layer digests.
-. The Indexer bypasses downloading and re-analyzing the layer blobs from the registry, saving network bandwidth and CPU resources.
+. The Indexer avoids downloading and re-analyzing the layer blobs from the registry, saving network bandwidth and CPU resources.
 . The scanner reuses the existing `IndexReport` from `scanner-v4-db`, matches it against the current CVE feeds, and delivers the report to Central DB.
 
 === Periodic Image Reprocessing Loop
 
 - Every 4 hours (configurable with `ROX_REPROCESSING_INTERVAL` environment variable), Central runs an automated image reprocessing loop for all active (deployed) images.
-- The Matcher evaluates the existing `IndexReport` against vulnerability definitions that Central updates every 5 minutes (configurable with `ROX_SCANNER_VULN_UPDATE_INTERVAL` environment variable).
-- If new CVEs are published that affect packages in the stored index, Central DB is updated and policy violations are created or resolved automatically.
+- The Matcher evaluates the existing `IndexReport` against vulnerability definitions.
+- If new CVEs are published that affect packages in the stored index, the Central DB is updated and policy violations are created or resolved automatically.
 
 [NOTE]
 ====
-- The `ROX_SCANNER_VULN_UPDATE_INTERVAL` environment variable applies to the connection between Central and the `definitions.stackrox.io` feed. Both the StackRox Scanner and Scanner V4 use vulnerability data from Central that is obtained from this feed.
-- This `definitions.stackrox.io` feed combines vulnerability definitions from upstream sources, and it refreshes every 3 hours.
+* Central checks the `definitions.stackrox.io` endpoint every 5 minutes (configurable with `ROX_SCANNER_VULN_UPDATE_INTERVAL` environment variable) to determine if new vulnerability definitions are available.
+* The `ROX_SCANNER_VULN_UPDATE_INTERVAL` environment variable applies to the connection between Central and the `definitions.stackrox.io` feed. Both the StackRox Scanner and Scanner V4 use vulnerability data from Central that is obtained from this feed.
+* The upstream vulnerability feed hosted at `definitions.stackrox.io` is updated by automated build pipelines approximately every 3 to 4 hours.
 ====
 
 == Pruning and Garbage Collection
@@ -121,7 +122,7 @@ Extending the Scanner V4 garbage collection retention settings (e.g., increasing
   ** Storage expansion: Retaining `IndexReports` for longer periods increases the amount of historical data stored over time.
   ** PVC capacity risk: The accumulation of `IndexReports` can exhaust available PVC capacity. Running out of storage can lead to database errors or degraded scanning performance.
 * **Reduced network traffic and registry load through extended caching**:
-  ** Reduced Blob Downloads: Scanner V4 can avoid re-downloading and re-analyzing image layer blobs when the corresponding cached data remains available and valid.
+  ** Fewer Blob Downloads: Scanner V4 can avoid re-downloading and re-analyzing image layer blobs when the corresponding cached data remains available and valid.
   ** Bandwidth and CPU savings: Extended caching can reduce network traffic between the Scanner V4 Indexer and container image registries, as well as CPU and I/O overhead on scanner pods and registry endpoints.
 * No expected negative impact on new vulnerability (CVE) reporting.
 
@@ -145,7 +146,7 @@ Here is a side-by-side comparison of the usage, role, and operational characteri
 
 | **Deployment Location**
 | Installed exclusively on the cluster hosting Central Services.
-| Installed on the Central cluster (alongside Matcher and Indexer) and optionally on Secured Clusters for local/delegated scanning.
+| Installed on the Central cluster (alongside Matcher and Indexer) and optionally on `SecuredClusters` for local/delegated scanning.
 
 | **Data Retention and Purging**
 | Configured via **Platform Configuration → System Configuration → Images no longer deployed**.
@@ -165,7 +166,7 @@ Disable autogenerated image integrations by setting the `ROX_DISABLE_AUTOGENERAT
 When auto-discovery is disabled, RHACS authenticates with container registries using three primary methods:
 
 * **Manually configured image integrations**: Manual integrations always take precedence over autogenerated ones for matching registry endpoints.
-* **Delegated image scanning**: If delegated image scanning is enabled, image scanning is performed directly by the scanner deployed on SecuredClusters. Authentication occurs in the following order:
+* **Delegated image scanning**: If delegated image scanning is enabled, image scanning is performed directly by the scanner deployed on `SecuredClusters`. Authentication occurs in the following order:
 . Synchronized manual image integrations from Central
 . The pull secret in the workload namespace
 . The OpenShift global pull secret
@@ -174,7 +175,7 @@ When auto-discovery is disabled, RHACS authenticates with container registries u
 
 == Configure Environment Variables for RHACS Components
 
-The following example uses `.spec.overlays` field to apply JSONPath-based patches to Central and Scanner V4 Indexer:
+The following example uses the `.spec.overlays` field to apply JSONPath-based patches to Central and Scanner V4 Indexer:
 
 [source,yaml]
 ----
@@ -198,11 +199,11 @@ spec:
         - path: 'spec.template.spec.containers[name:central].env[-1]'
           value: |
             name: ROX_REPROCESSING_INTERVAL
-            value: "2"
+            value: "2h"
     - apiVersion: apps/v1
       kind: Deployment
       name: scanner-v4-indexer
-      patches:  # change triggered gc interval to 2 hours, and delete manifests aged between 14-30 days
+      patches:  # change triggered gc interval to 6 hours, and delete manifests aged between 14-30 days
         - path: 'spec.template.spec.containers[name:indexer].env[-1]'
           value: |
             name: ROX_SCANNER_V4_MANIFEST_DELETE_INTERVAL_START
@@ -210,9 +211,9 @@ spec:
         - path: 'spec.template.spec.containers[name:indexer].env[-1]'
           value: |
             name: ROX_SCANNER_V4_MANIFEST_DELETE_DURATION
-            value: "14d"
+            value: "16d"
         - path: 'spec.template.spec.containers[name:indexer].env[-1]'
           value: |
             name: ROX_SCANNER_V4_MANIFEST_GC_INTERVAL
-            value: "2h"
+            value: "6h"
 ----
