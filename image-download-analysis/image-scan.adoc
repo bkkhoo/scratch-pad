@@ -11,7 +11,7 @@ endif::[]
 RHACS provides integrated vulnerability-scanning capabilities to analyze container images and cluster workloads for security risks. It primarily uses two scanning engines:
 
 - **Scanner V4**: Introduced in RHACS v4.4, this engine uses ClairCore to provide accurate detection of OS packages, language dependencies (like Go, Python, Java), and Go binaries. Scanner V4 is the default image scanner starting in RHACS v4.8.
-- **StackRox Scanner**: The legacy default scanner, originally a fork of Clair v2. Although StackRox Scanner is deprecated, it must still remain enabled on Central Services due to underlying platform software dependencies. This scanner can be safely disable on `SecuredCluster` if Scanner V4 is enabled on the cluster or if local image scanning on that specific `SecuredCluster` is not required.
+- **StackRox Scanner**: The legacy scanner, originally a fork of Clair v2. Although StackRox Scanner is deprecated, it must remain enabled on Central Services due to underlying platform software dependencies. This scanner can be safely disable on `SecuredCluster` if Scanner V4 is enabled on the cluster or if local image scanning on that specific `SecuredCluster` is not required.
 
 The scanners pull images from registries, analyze layers to identify installed packages, and match them against known Common Vulnerabilities and Exposures (CVE) databases to generate risk-prioritized reports in the RHACS portal.
 
@@ -78,7 +78,7 @@ Deleting or pruning inactive image scan data from **Central DB** (`central-db`) 
 
 Independent of Central, Scanner V4 uses two distinct background garbage collection (GC) processes to manage storage and maintain performance:
 
-* **Throttled GC**: every 4 hours, purges up to 100 expired manifests (7-30 days after indexing) from `scanner-v4-db`.
+* **Regular GC**: every 4 hours, purges up to 100 expired manifests (7-30 days after indexing) from `scanner-v4-db`.
 * **Full GC**: every 24 hours, performs a comprehensive cleanup of all expired manifests to reclaim significant space.
 
 [NOTE]
@@ -97,19 +97,19 @@ The following environment variables control Scanner V4 garbage collection (see h
 
 | ROX_SCANNER_V4_MANIFEST_DELETE_INTERVAL_START
 | 7 days
-| Minimum age before a manifest becomes eligible for deletion in throttled GC run.
+| Minimum age before a manifest becomes eligible for deletion in regular GC run.
 
 | ROX_SCANNER_V4_MANIFEST_DELETE_DURATION
 | 23 days
-| Manifest aged between `ROX_SCANNER_V4_MANIFEST_DELETE_INTERVAL_START` and (`ROX_SCANNER_V4_MANIFEST_DELETE_INTERVAL_START` + `ROX_SCANNER_V4_MANIFEST_DELETE_DURATION`) days are considered for random deletion during throttled GC runs.
+| Manifest aged between `ROX_SCANNER_V4_MANIFEST_DELETE_INTERVAL_START` and (`ROX_SCANNER_V4_MANIFEST_DELETE_INTERVAL_START` + `ROX_SCANNER_V4_MANIFEST_DELETE_DURATION`) days are considered for random deletion during regular GC runs.
 
 | ROX_SCANNER_V4_MANIFEST_GC_INTERVAL
 | 4 hours
-| The interval between throttled GC runs.
+| The interval between regular GC runs.
 
 | ROX_SCANNER_V4_MANIFEST_GC_THROTTLE
 | 100
-| The number of manifests to garbage collect during a typical throttled GC run.
+| The number of manifests to garbage collect during a typical regular GC run.
 
 | ROX_SCANNER_V4_FULL_MANIFEST_GC_INTERVAL
 | 24 hours
@@ -196,14 +196,21 @@ spec:
       kind: Deployment
       name: central
       patches:
+        # change the image reprocessing interval to 6 hours
         - path: 'spec.template.spec.containers[name:central].env[-1]'
           value: |
             name: ROX_REPROCESSING_INTERVAL
-            value: "2h"
+            value: "6h"
+        # set central vulnerability definition poll interval to 15 minutes
+        - path: 'spec.template.spec.containers[name:central].env[-1]'
+          value: |
+            name: ROX_SCANNER_VULN_UPDATE_INTERVAL
+            value: "15m"
     - apiVersion: apps/v1
       kind: Deployment
       name: scanner-v4-indexer
-      patches:  # change triggered gc interval to 6 hours, and delete manifests aged between 14-30 days
+      patches:
+        # set manifests older than 14-30 days as eligible for deletion
         - path: 'spec.template.spec.containers[name:indexer].env[-1]'
           value: |
             name: ROX_SCANNER_V4_MANIFEST_DELETE_INTERVAL_START
@@ -212,6 +219,7 @@ spec:
           value: |
             name: ROX_SCANNER_V4_MANIFEST_DELETE_DURATION
             value: "16d"
+        # set regular gc interval to 6 hours
         - path: 'spec.template.spec.containers[name:indexer].env[-1]'
           value: |
             name: ROX_SCANNER_V4_MANIFEST_GC_INTERVAL
