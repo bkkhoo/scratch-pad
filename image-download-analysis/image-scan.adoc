@@ -8,12 +8,12 @@ ifdef::env-github[]
 endif::[]
 = RHACS Scanner
 
-RHACS provides integrated vulnerability-scanning capabilities to analyze container images and cluster workloads for security risks. It primarily uses two scanning engines:
+Red Hat Advanced Cluster Security for Kubernetes (RHACS) provides integrated vulnerability scanning to identify security risks in container images and cluster workloads. Its image-scanning architecture includes two scanning engines:
 
-- **Scanner V4**: Introduced in RHACS v4.4, this engine uses ClairCore to provide accurate detection of OS packages, language dependencies (like Go, Python, Java), and Go binaries. Scanner V4 is the default image scanner starting in RHACS v4.8.
-- **StackRox Scanner**: The legacy scanner, originally a fork of Clair v2. Although StackRox Scanner is deprecated, it must remain enabled on Central Services due to underlying platform software dependencies. This scanner can be safely disabled on `SecuredCluster` if Scanner V4 is enabled on the cluster or if local image scanning on that specific `SecuredCluster` is not required.
+* **Scanner V4**: Introduced in RHACS v4.4, Scanner V4 uses ClairCore to identify operating system packages, language-specific dependencies (such as Go, Python, and Java packages), and Go binaries. It is the default image scanner starting with RHACS v4.8.
+* **StackRox Scanner**: The legacy scanner, originally forked from Clair v2. Although deprecated, it must be enabled for Central Services due to underlying platform software dependencies. This scanner can be safely disabled on `SecuredCluster` if Scanner V4 is enabled on the cluster or if local image scanning on that specific `SecuredCluster` is not required.
 
-The scanners pull images from registries, analyze layers to identify installed packages, and match them against known Common Vulnerabilities and Exposures (CVE) databases to generate risk-prioritized reports in the RHACS portal.
+The scanning engines analyze container image layers to identify installed packages and match those packages against known Common Vulnerabilities and Exposures (CVEs). RHACS uses the resulting vulnerability information to risk-prioritized generate reports and support security policy enforcement.
 
 == RHACS Image Scanning (Scanner V4)
 === Scanning a New Image
@@ -33,9 +33,9 @@ The scanners pull images from registries, analyze layers to identify installed p
 
 === Periodic Image Reprocessing Loop
 
-- Every 4 hours (configurable with `ROX_REPROCESSING_INTERVAL` environment variable), Central runs an automated image reprocessing loop for all active (deployed) images.
-- The Matcher evaluates the existing `IndexReport` against vulnerability definitions.
-- If new CVEs are published that affect packages in the stored index, the Central DB is updated and policy violations are created or resolved automatically.
+* Every 4 hours (configurable with `ROX_REPROCESSING_INTERVAL` environment variable), Central runs an automated image reprocessing loop for all active (deployed) images.
+* The Matcher evaluates the existing `IndexReport` against vulnerability definitions.
+* If new CVEs are published that affect packages in the stored index, the Central DB is updated and policy violations are created or resolved automatically.
 
 [NOTE]
 ====
@@ -83,8 +83,8 @@ Independent of Central, Scanner V4 uses two distinct background garbage collecti
 
 [NOTE]
 ====
-- Purging a manifest from `scanner-v4-db` does **not** delete the active image scan data or vulnerability history from Central DB.
-- If Central or a `roxctl` scan explicitly requests a fresh index for an active image after its layer index was purged, Scanner V4 transparently fetches the manifest and layer blobs from the registry to rebuild the `IndexReports` in `scanner-v4-db`.
+* Purging a manifest from `scanner-v4-db` does **not** delete the active image scan data or vulnerability history from Central DB.
+* If Central or a `roxctl` scan explicitly requests a fresh index for an active image after its layer index was purged, Scanner V4 transparently fetches the manifest and layer blobs from the registry to rebuild the `IndexReports` in `scanner-v4-db`.
 ====
 
 The following environment variables control Scanner V4 garbage collection (see https://github.com/stackrox/stackrox/blob/master/pkg/env/scannerv4.go):
