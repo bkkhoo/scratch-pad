@@ -55,17 +55,17 @@ The scanning engines analyze container image layers to identify installed packag
 
 Deleting or pruning inactive image scan data from **Central DB** (`central-db`) has several direct operational and historical consequences:
 
-* Storage and performance benefits:
+* **Storage and performance benefits**:
   ** Reduced storage space usage, lowering the risk of running out of space on the Central DB Persistent Volume Claim (PVC).
   ** Reduced memory and CPU overhead on both the `central` and `central-db` pods, mitigating the risk of Out-of-Memory pod restarts.
   ** Faster portal and API performance, as there is less data to load, resulting in improved response times.
-* Loss of historical audit and reporting data:
+* **Loss of historical audit and reporting data**:
   ** Permanent removal of past scan data (scan findings, package inventories, and vulnerability findings).
   ** Inability to audit past image states or generate compliance and vulnerability reports for images whose scan data has been deleted.
-* No impact on active security or network bandwidth:
+* **No impact on active security or network bandwidth**:
   ** Running deployments continue to be monitored and enforced normally.
   ** Inactive images are excluded from Central's 4-hour periodic vulnerability reprocessing loop anyway.
-* Automatic re-scanning upon redeployment:
+* **Automatic re-scanning upon redeployment**:
   ** RHACS automatically detects the image and performs a fresh scan against the latest vulnerability definitions.
 
 [NOTE]
@@ -118,13 +118,13 @@ The following environment variables control Scanner V4 garbage collection (see h
 
 Extending the Scanner V4 garbage collection retention settings (e.g., increasing the manifest retention period from 7-30 days to 14-60 days) has several consequences:
 
-* Increased disk space usage in `scanner-v4-db`:
+* **Increased disk space usage in `scanner-v4-db`**:
   ** Storage expansion: Retaining `IndexReports` for longer periods increases the amount of historical data stored over time.
   ** PVC capacity risk: The accumulation of `IndexReports` can exhaust available PVC capacity. Running out of storage can lead to database errors or degraded scanning performance.
 * **Reduced network traffic and registry load through extended caching**:
   ** Fewer blob downloads: Scanner V4 can avoid re-downloading and re-analyzing image layer blobs when the corresponding cached data remains available and valid.
   ** Bandwidth and CPU savings: Extended caching can reduce network traffic between the Scanner V4 Indexer and container image registries, as well as CPU and I/O overhead on scanner pods and registry endpoints.
-* No expected negative impact on new vulnerability (CVE) reporting.
+* **No expected negative impact on new vulnerability (CVE) reporting**.
 
 == Central DB vs Scanner V4 DB
 
