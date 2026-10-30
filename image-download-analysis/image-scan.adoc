@@ -7,11 +7,12 @@ ifdef::env-github[]
 :warning-caption: :warning:
 endif::[]
 = RHACS Scanner
+:toc:
 
-Red Hat Advanced Cluster Security for Kubernetes (RHACS) provides integrated vulnerability scanning to identify security risks in container images and cluster workloads. Its image-scanning architecture includes two scanning engines:
+Red Hat Advanced Cluster Security for Kubernetes (RHACS) provides integrated vulnerability scanning to identify security risks in container images and Red Hat Enterprise Linux CoreOS (RHCOS) nodes. Its image-scanning architecture includes two scanning engines:
 
 * **Scanner V4**: Introduced in RHACS v4.4, Scanner V4 uses ClairCore to identify operating system packages, language-specific dependencies (such as Go, Python, and Java packages), and Go binaries. It is the default image scanner starting with RHACS v4.8.
-* **StackRox Scanner**: The legacy scanner, originally forked from Clair v2. Although deprecated, it must be enabled for Central Services due to underlying platform software dependencies. This scanner can be safely disabled on `SecuredCluster` if Scanner V4 is enabled on the cluster or if local image scanning on that specific `SecuredCluster` is not required.
+* **StackRox Scanner**: The legacy scanner, originally forked from Clair v2. Although deprecated, it must be enabled for Central Services due to underlying platform software dependencies. This scanner can be safely disabled on secured Cluster if Scanner V4 is enabled on the cluster or if local image scanning on that specific secured cluster is not required.
 
 The scanning engines analyze container image layers to identify installed packages and match those packages against known Common Vulnerabilities and Exposures (CVEs). RHACS uses the resulting vulnerability information to risk-prioritized generate reports and support security policy enforcement.
 
@@ -126,6 +127,95 @@ Extending the Scanner V4 garbage collection retention settings (e.g., increasing
   ** Bandwidth and CPU savings: Extended caching can reduce network traffic between the Scanner V4 Indexer and container image registries, as well as CPU and I/O overhead on scanner pods and registry endpoints.
 * **No expected negative impact on new vulnerability (CVE) reporting**.
 
+== Delegated Image Scanning
+
+Delegated image scanning allows secured clusters to index and scan container images locally, sending only the vulnerability matching results to Central. This feature is essential for isolated or mirrored registries because Central cannot pull images from such registries directly.
+
+The diagram below illustrates the RHACS **delegated scanning** process; note how image URLs are rewritten according to rules configured in `ImageContentSourcePolicy` (ICSP, deprecated since OpenShift v4.13), `ImageDigestMirrorSet` (IDMS), or `ImageTagMirrorSet` (ITMS) custom resources.
+
+----
+[ Deployment/PodSpec ]
+  Image: registry.redhat.io/openshift4/ose-cli:v4.14
+          │
+          ▼
+1. Central delegates scan request
+          │
+          ▼
+2. Sensor (Secured Cluster)
+          │
+          ├─► Reads local ICSP / IDMS / ITMS
+          └─► Rewrites URL to internal mirror: mirror.internal.company/openshift4/ose-cli:v4.14
+          │
+          ▼
+3. Local Scanner V4 Indexer
+          │
+          ├─► Downloads image manifest & layer blobs from internal mirror
+          └─► Indexes packages & generates IndexReport
+          │
+          ▼
+4. Central Scanner V4 Matcher
+          │
+          └─► Matches IndexReport against vulnerability feeds and evaluates policies
+----
+
+The diagram below illustrates the **non-delegated** image scanning process, where the Central Scanner pulls the image **directly** from the registry.
+
+----
+[ Deployment/PodSpec or roxctl/API ]
+  Image: quay.io/org/app:v1.0
+          │
+          ▼
+1. Central receives scan request
+          │
+          ▼
+2. Central's Scanner V4 Indexer
+          │
+          ├─► Connects directly to upstream registry (quay.io)
+          ├─► Downloads image manifest & layer blobs directly
+          └─► Indexes packages & generates IndexReport
+          │
+          ▼
+3. Central's Scanner V4 Matcher
+          │
+          └─► Matches IndexReport against vulnerability feeds and evaluates policies
+----
+
+The recommended production setup for delegated scanning, especially in air-gapped or mirrored environments, combines distributed workload scanning with a centralized fallback for ad-hoc requests:
+
+[cols="1,1,1", options="header"]
+|===
+| Setting / Component
+| Recommended Value
+| Primary Function
+
+| **Local Scanners**
+| Enabled on every secured cluster       |
+ Resolves local `ICSP`/`IDMS`/`ITMS` rules and offloads layer indexing compute from Central.
+
+| **Delegated Scanning Scope**
+| All registries or Specified registries
+| Directs Central to delegate layer downloading and indexing for mirrored or private paths.
+
+| **Registry's Destination Cluster Assignment**
+| Unspecified (Dynamic Workload Routing)
+| Routes workload image scans automatically to the cluster hosting the running pod.
+
+| **Global Default Cluster**
+| `local-cluster` (Central)
+| Handles `roxctl` CLI, API, and CI/CD pipeline scans smoothly.
+|===
+
+[NOTE]
+====
+The local scanner is used for all OpenShift internal registry images as well as any external or mirrored registries configured under delegated scanning.
+====
+
+It is not recommended to disable local scanners on all secured clusters and routing all delegated scanning for mirrored registries exclusively to `local-cluster` (Central's cluster). The only exception when this topology is acceptable is when the environment strictly meets all of the following criteria:
+
+* **Unified Network**: All secured clusters and `local-cluster` reside in the same flat network space with direct access to a centralized internal registry mirror.
+* **Identical Mirror CRs:** Every cluster uses the exact same `ICSP`/`IDMS`/`ITMS` custom resources.
+* **Resource Preservation Priority:** Preserving CPU and memory on sclusters is prioritized over distributed scanning resilience.
+
 == Central DB vs Scanner V4 DB
 
 Here is a side-by-side comparison of the usage, role, and operational characteristics of **Central DB** (`central-db`) and **Scanner V4 DB** (`scanner-v4-db`):
@@ -146,7 +236,7 @@ Here is a side-by-side comparison of the usage, role, and operational characteri
 
 | **Deployment Location**
 | Installed exclusively on the cluster hosting Central Services.
-| Installed on the Central cluster (alongside Matcher and Indexer) and optionally on `SecuredClusters` for local/delegated scanning.
+| Installed on the Central cluster (alongside Matcher and Indexer) and optionally on secured clusters for local/delegated scanning.
 
 | **Data Retention and Purging**
 | Configured via **Platform Configuration → System Configuration → Images no longer deployed**.
@@ -166,7 +256,7 @@ Disable autogenerated image integrations by setting the `ROX_DISABLE_AUTOGENERAT
 When auto-discovery is disabled, RHACS authenticates with container registries using three primary methods:
 
 * **Manually configured image integrations**: Manual integrations always take precedence over autogenerated ones for matching registry endpoints.
-* **Delegated image scanning**: If delegated image scanning is enabled, image scanning is performed directly by the scanner deployed on `SecuredClusters`. Authentication occurs in the following order:
+* **Delegated image scanning**: If delegated image scanning is enabled, image scanning is performed directly by the scanner deployed on secured clusters. Authentication occurs in the following order:
 . Synchronized manual image integrations from Central
 . The pull secret in the workload namespace
 . The OpenShift global pull secret
@@ -225,3 +315,35 @@ spec:
             name: ROX_SCANNER_V4_MANIFEST_GC_INTERVAL
             value: "6h"
 ----
+
+== Custom CA Bundles
+
+Various RHACS components (authentication, image integrations, notification integrations, scanner, etc.) communicate with external entities. When these external entities use TLS certificates signed by private Certificate Authorities (CAs), the private CA bundles must be added as trusted CAs to RHACS.
+
+To add a private CA to RHACS, add the PEM-encoded CA bundle to the `spec.tls.additionalCAs` property of the `Central` and `SecuredCluster` custom resources:
+
+[source,yaml]
+----
+spec:
+  tls:
+    additionalCAs:
+      - name: private-ca-bundle-1
+        content: |
+          -----BEGIN CERTIFICATE-----
+          ...
+          -----END CERTIFICATE-----
+      - name: private-ca-bundle-2
+        content: |
+          -----BEGIN CERTIFICATE-----
+          ...
+          -----END CERTIFICATE-----
+----
+
+[NOTE]
+====
+* RHACS works fully with the OpenShift cluster-wide trusted CA. When RHACS is deployed via the RHACS Operator on OpenShift, CA bundle injection is handled automatically:
+  ** The RHACS Operator automatically creates an empty ConfigMap with the `config.openshift.io/inject-trusted-cabundle: "true"`` label.
+  ** The Cluster Network Operator automatically injects the cluster-wide trusted CA bundle into the ConfigMap.
+  ** The RHACS Operator mounts the ConfigMap as a volume to the RHACS component pods (Central, Sensor, Admission Controller, and Scanner).
+* Additional cluster-wide trusted CAs are configurable via the `proxy` custom resource.
+====
